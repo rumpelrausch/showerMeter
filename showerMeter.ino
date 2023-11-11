@@ -8,7 +8,7 @@
 #define DAYS_PER_YEAR 160
 #define OFF_AFTER_SECONDS 4
 #define OFF_GRACE_SECONDS 60
-#define ANALOG_THRESHOLD 10
+#define ANALOG_THRESHOLD 50
 
 //###############################################
 //###############################################
@@ -123,7 +123,7 @@ ISR(TIMER1_COMPA_vect) {
 
 void checkOnOff() {
  int analog = analogRead(ANALOG_PIN);
-  if(analog > 1) {
+  if(analog > ANALOG_THRESHOLD) {
     timerOffDetection = 1;
     return;
   }
