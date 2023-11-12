@@ -7,31 +7,31 @@
 #define HEATER_KW 21
 #define DAYS_PER_YEAR 160
 #define OFF_AFTER_SECONDS 4
-#define OFF_GRACE_SECONDS 60
-#define ANALOG_THRESHOLD 50
+#define FINISHED_AFTER_OFF_SECONDS 60
+#define ANALOG_THRESHOLD 80
 
-//###############################################
-//###############################################
-//###############################################
+// ###############################################
+// ###############################################
+// ###############################################
 
 // #define TEST_ANALOG_IN
-#define ANALOG_PIN  3
+#define ANALOG_PIN 3
 #define PAGE_COST 1
 #define PAGE_TIME 2
 #define CENTICENT_PER_SECOND (CENT_PER_KWH * HEATER_KW) / 36
 
 uint8_t currentPage = PAGE_COST;
 unsigned long lastMillis = 0;
-bool shallUpdate = false;
 volatile uint16_t milliseconds = 0;
 volatile uint16_t seconds = 0;
 volatile uint16_t secondsOn = 0;
-volatile uint16_t timerOffDetection = 0; // > 0: Timer is running
-volatile uint16_t timerOffGrace = 0; // > 0: Timer is running
+volatile uint16_t timerOffDetection = 0;      // > 0: Timer is running
+volatile uint16_t timerFinishedDetection = 0; // > 0: Timer is running
 volatile uint8_t blinkState = 0;
 volatile uint16_t centiCents = 0;
 
-void setup() {
+void setup()
+{
   pinMode(ANALOG_PIN, INPUT);
 
   oled.begin(64, 48, sizeof(tiny4koled_init_64x48), tiny4koled_init_64x48);
@@ -45,42 +45,45 @@ void setup() {
   initTimer();
 }
 
-void greet() {
+void greet()
+{
   oled.setContrast(255);
-  oled.setCursor(0,1);
+  oled.setCursor(0, 1);
   oled.print(F(" Shower "));
-  oled.setCursor(0,4);
+  oled.setCursor(0, 4);
   oled.print(F("  Check "));
 #ifndef TEST_ANALOG_IN
   delay(5000);
 #endif
 }
 
-void loop() {
-  // Don't update the display here, that's done in the interrupt routine
+void loop()
+{
+  int analog = checkOnOff();
 #ifdef TEST_ANALOG_IN
- int analog = analogRead(ANALOG_PIN);
- static char outString[] = "        ";
- itoa(analog, outString, 10);
- oled.setCursor(0,0);
- oled.print(outString);
- oled.clearToEOL();
+  static char outString[] = "        ";
+  itoa(analog, outString, 10);
+  oled.setCursor(0, 0);
+  oled.print(outString);
+  oled.clearToEOL();
 
- oled.setCursor(0,2);
- if(analog > ANALOG_THRESHOLD) {
-   oled.print(F("ON "));
- } else {
-   oled.print(F("OFF"));
- }
- delay(500);
-#else
-  checkOnOff();
-  updateDisplay();
+  oled.setCursor(0, 2);
+  if (analog > ANALOG_THRESHOLD)
+  {
+    oled.print(F("ON "));
+  }
+  else
+  {
+    oled.print(F("OFF"));
+  }
   delay(500);
+#else
+  delay(timerFinishedDetection == 0 ? 2000 : 100); // slow poll if off
 #endif
 }
 
-void initTimer() {
+void initTimer()
+{
   noInterrupts();
   // Clear registers
   TCNT1 = 0;
@@ -99,52 +102,65 @@ void initTimer() {
   interrupts();
 }
 
-ISR(TIMER1_COMPA_vect) {
+#ifndef TEST_ANALOG_IN
+ISR(TIMER1_COMPA_vect)
+{
   milliseconds++;
-  if (milliseconds == 1000) {
+  if (milliseconds == 1000)
+  {
     milliseconds = 0;
     seconds++;
-    if(timerOffDetection > 0) {
+    if (timerOffDetection > 0)
+    {
       timerOffDetection++;
       secondsOn++;
       centiCents += CENTICENT_PER_SECOND;
     }
-    if(timerOffGrace > 0) {
-      timerOffGrace++;
+    if (timerFinishedDetection > 0)
+    {
+      timerFinishedDetection++;
     }
-#ifndef TEST_ANALOG_IN
-  shallUpdate = true;
-#endif
+    updateDisplay();
   }
-  if (milliseconds % 150 == 0) {
-   blink();
+  if (milliseconds % 150 == 0)
+  {
+    blink();
   }
 }
+#endif
 
-void checkOnOff() {
- int analog = analogRead(ANALOG_PIN);
-  if(analog > ANALOG_THRESHOLD) {
+int checkOnOff()
+{
+  int analog = analogRead(ANALOG_PIN);
+  if (analog > ANALOG_THRESHOLD)
+  {
     timerOffDetection = 1;
-    return;
+    return analog;
   }
 
-  if(timerOffDetection >= OFF_AFTER_SECONDS) {
+  if (timerOffDetection >= OFF_AFTER_SECONDS)
+  {
     timerOffDetection = 0;
-    timerOffGrace = 1;
+    timerFinishedDetection = 1;
   }
 
-  if(timerOffGrace > OFF_GRACE_SECONDS) {
-    timerOffGrace = 0;
+  if (timerFinishedDetection > FINISHED_AFTER_OFF_SECONDS)
+  {
+    timerFinishedDetection = 0;
     secondsOn = 0;
     seconds = 0;
     centiCents = 0;
   }
+  return analog;
 }
 
-void updateDisplay() {
+void updateDisplay()
+{
   static bool wasOn = true;
-  if(secondsOn == 0) {
-    if(wasOn) {
+  if (secondsOn == 0)
+  {
+    if (wasOn)
+    {
       wasOn = false;
       oled.clear();
       oled.setCursor(0, 0);
@@ -154,7 +170,8 @@ void updateDisplay() {
     return;
   }
 
-  if(!wasOn && secondsOn > 0) {
+  if (!wasOn && secondsOn > 0)
+  {
     wasOn = true;
     oled.clear();
     oled.setContrast(255);
@@ -162,57 +179,69 @@ void updateDisplay() {
     seconds = 0;
   }
 
-  if(!shallUpdate) {
-    return;
-  }
-  shallUpdate = false;
-
-  if (seconds % PAGE_SWITCH_EVERY_SECONDS == 0) {
+  if (seconds % PAGE_SWITCH_EVERY_SECONDS == 0)
+  {
     setNextPage();
   }
-  switch (currentPage) {
-    case PAGE_COST:
-      updateCostPage();
-      break;
-    case PAGE_TIME:
-      updateTimePage();
+  switch (currentPage)
+  {
+  case PAGE_COST:
+    updateCostPage();
+    break;
+  case PAGE_TIME:
+    updateTimePage();
   }
+
+  oled.setCursor(56, 5);
+  // oled.print(timerOffDetection > 0 ? F("o") : F(" "));
+  oled.startData();
+  oled.sendData(timerOffDetection > 0 ? 0b10000000 : 0);
+  oled.endData();
 }
 
-void blink() {
-  if (blinkState < 1) {
+void blink()
+{
+  if (blinkState < 1)
+  {
     return;
   }
-  if (blinkState == 1) {
+  if (blinkState == 1)
+  {
     oled.setContrast(0);
     blinkState++;
     return;
   }
-  if (blinkState == 2) {
+  if (blinkState == 2)
+  {
     oled.setContrast(255);
     blinkState = 1;
   }
 }
 
-void blinkOn() {
-  if (blinkState == 0) {
+void blinkOn()
+{
+  if (blinkState == 0)
+  {
     blinkState = 1;
   }
 }
 
-void setNextPage() {
-  switch (currentPage) {
-    case PAGE_COST:
-      currentPage = PAGE_TIME;
-      beginTimePage();
-      break;
-    case PAGE_TIME:
-      currentPage = PAGE_COST;
-      beginCostPage();
+void setNextPage()
+{
+  switch (currentPage)
+  {
+  case PAGE_COST:
+    currentPage = PAGE_TIME;
+    beginTimePage();
+    break;
+  case PAGE_TIME:
+    currentPage = PAGE_COST;
+    beginCostPage();
   }
 }
 
-void updateCostPage() {
+void updateCostPage()
+{
   oled.setCursor(12, 0);
   oled.print(getEuroString(centiCents / 100));
   oled.print(F(","));
@@ -224,25 +253,31 @@ void updateCostPage() {
   oled.clearToEOL();
 }
 
-char* getEuroString(uint16_t cents) {
+char *getEuroString(uint16_t cents)
+{
   static char euroString[] = "...";
   itoa(cents / 100, euroString, 10);
   return euroString;
 }
 
-char* getCentString(uint16_t cents) {
+char *getCentString(uint16_t cents)
+{
   static char centString[] = "   ";
 
-  if (cents < 10) {
+  if (cents < 10)
+  {
     itoa(cents, &(centString[1]), 10);
     centString[0] = '0';
-  } else {
+  }
+  else
+  {
     itoa(cents, centString, 10);
   }
   return centString;
 }
 
-void beginCostPage() {
+void beginCostPage()
+{
   oled.clear();
   drawEuro(0, 0);
   oled.setCursor(0, 2);
@@ -250,56 +285,72 @@ void beginCostPage() {
   drawEuro(0, 4);
 }
 
-void beginTimePage() {
+void beginTimePage()
+{
   oled.clear();
   oled.setCursor(0, 0);
 }
 
-void updateTimePage() {
+void updateTimePage()
+{
   oled.setCursor(4, 1);
   oled.setSpacing(3);
   oled.print(getHoursString());
   oled.print(F(":"));
   oled.print(getSecondsString());
   oled.setSpacing(0);
-  oled.setCursor(17, 4);
-  if (secondsOn < SECONDS_UNTIL_UNHAPPY) {
+  oled.setCursor(10, 4);
+  if (secondsOn < SECONDS_UNTIL_UNHAPPY)
+  {
     oled.print(F(":-)"));
-  } else if (secondsOn < SECONDS_UNTIL_WARN) {
+  }
+  else if (secondsOn < SECONDS_UNTIL_WARN)
+  {
     oled.print(F(":-|"));
-  } else {
+  }
+  else
+  {
     oled.print(F(":-("));
     blinkOn();
   }
 }
 
-char* getHoursString() {
+char *getHoursString()
+{
   static char hoursString[] = "   ";
 
   uint16_t clockHours = secondsOn / 60;
-  if (clockHours < 10) {
+  if (clockHours < 10)
+  {
     itoa(clockHours, &(hoursString[1]), 10);
     hoursString[0] = '0';
-  } else {
+  }
+  else
+  {
     itoa(clockHours, hoursString, 10);
   }
   return hoursString;
 }
 
-char* getSecondsString() {
+char *getSecondsString()
+{
   static char secondsString[] = "   ";
 
   uint8_t clockSeconds = secondsOn % 60;
-  if (clockSeconds < 10) {
+  if (clockSeconds < 10)
+  {
     itoa(clockSeconds, &(secondsString[1]), 10);
     secondsString[0] = '0';
-  } else {
+  }
+  else
+  {
     itoa(clockSeconds, secondsString, 10);
   }
   return secondsString;
 }
 
-void drawEuro(uint8_t x, uint8_t y) {
+void drawEuro(uint8_t x, uint8_t y)
+{
   oled.setCursor(x, y);
   oled.startData();
   oled.sendData(0x40);
