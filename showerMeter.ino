@@ -22,7 +22,7 @@
 
 uint8_t currentPage = PAGE_COST;
 unsigned long lastMillis = 0;
-volatile uint16_t milliseconds = 0;
+volatile uint16_t deciSeconds = 0;
 volatile uint16_t seconds = 0;
 volatile uint16_t secondsOn = 0;
 volatile uint16_t timerOffDetection = 0;      // > 0: Timer is running
@@ -89,14 +89,14 @@ void initTimer()
   TCNT1 = 0;
   TCCR1 = 0;
 
-  // 1000 Hz (16000000/((124+1)*128))
-  OCR1C = 124;
+  // 10.01602564102564 Hz (16000000/((194+1)*8192))
+  OCR1C = 194;
   // interrupt COMPA
   OCR1A = OCR1C;
   // CTC
   TCCR1 |= (1 << CTC1);
-  // Prescaler 128
-  TCCR1 |= (1 << CS13);
+  // Prescaler 8192
+  TCCR1 |= (1 << CS13) | (1 << CS12) | (1 << CS11);
   // Output Compare Match A Interrupt Enable
   TIMSK |= (1 << OCIE1A);
   interrupts();
@@ -105,10 +105,10 @@ void initTimer()
 #ifndef TEST_ANALOG_IN
 ISR(TIMER1_COMPA_vect)
 {
-  milliseconds++;
-  if (milliseconds == 1000)
+  deciSeconds++;
+  if (deciSeconds == 10)
   {
-    milliseconds = 0;
+    deciSeconds = 0;
     seconds++;
     if (timerOffDetection > 0)
     {
@@ -122,7 +122,7 @@ ISR(TIMER1_COMPA_vect)
     }
     updateDisplay();
   }
-  if (milliseconds % 150 == 0)
+  if (deciSeconds % 5 == 0)
   {
     blink();
   }
