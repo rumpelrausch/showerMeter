@@ -8,7 +8,7 @@
 #define DAYS_PER_YEAR 160
 #define OFF_AFTER_SECONDS 4
 #define FINISHED_AFTER_OFF_SECONDS 60
-#define ANALOG_THRESHOLD 80
+#define ANALOG_THRESHOLD 65
 
 // ###############################################
 // ###############################################
@@ -135,6 +135,7 @@ int checkOnOff()
   if (analog > ANALOG_THRESHOLD)
   {
     timerOffDetection = 1;
+    timerFinishedDetection = 0;
     return analog;
   }
 
