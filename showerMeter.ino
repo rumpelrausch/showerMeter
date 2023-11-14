@@ -5,7 +5,7 @@
 #define DAYS_PER_YEAR 160
 
 #define OFF_AFTER_SECONDS 3
-#define FINISHED_AFTER_OFF_SECONDS 10
+#define FINISHED_AFTER_OFF_SECONDS 60
 #define ANALOG_THRESHOLD 65
 
 #define PAGE_SWITCH_EVERY_SECONDS 4
@@ -67,7 +67,7 @@ void setup()
 void loop()
 {
 #ifdef TEST_ANALOG_IN
-  int analog = analogRead(ANALOG_PIN);
+  int analog = getAverageAnalog();
   static char outString[] = "        ";
   itoa(analog, outString, 10);
   oled.setCursor(0, 0);
@@ -83,7 +83,7 @@ void loop()
   {
     oled.print(F("OFF"));
   }
-  delay(500);
+  delay(FAST_POLL_MILLISECONDS);
 #else
   state = determinePhase();
   updateDisplay();
@@ -135,7 +135,7 @@ ISR(TIMER1_COMPA_vect)
 {
   noInterrupts();
   timer1value++;
-  if (timer1value % 8 == 0)
+  if (timer1value % 4 == 0)
   {
     tickBlink();
   }
@@ -175,11 +175,35 @@ void tickSecond()
   }
 }
 
+int getAverageAnalog()
+{
+  static uint8_t numOfPreReads = 0;
+  static int values[4];
+  uint8_t pos;
+  int analog;
+
+  // shift up
+  for(pos = 3; pos > 0; pos--)
+  {
+    values[pos] = values[pos-1];
+  }
+
+  values[0] = analogRead(ANALOG_PIN);
+  if(numOfPreReads > 3) {
+    analog = 0;
+    for(pos = 0; pos < 4; pos++){
+      analog += values[pos];
+    }
+    return analog / 4;
+  }
+
+  numOfPreReads++;
+  return 0;
+}
+
 uint8_t determinePhase()
 {
-  int analog = analogRead(ANALOG_PIN);
-
-  if (analog > ANALOG_THRESHOLD)
+  if (getAverageAnalog() > ANALOG_THRESHOLD)
   {
     timerOffDetection = 0;
     timerFinishedDetection = 0;
