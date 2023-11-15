@@ -7,6 +7,10 @@
 #define OFF_AFTER_SECONDS 3
 #define FINISHED_AFTER_OFF_SECONDS 60
 #define ANALOG_THRESHOLD 20
+// Should be kept at a power of 2 for faster math, but
+// that's not _really_ necessary (we're doing expensive
+// math anyway and don't feature low-power modes).
+#define ANALOG_OVERSAMPLING 4
 
 #define PAGE_SWITCH_EVERY_SECONDS 4
 #define SECONDS_UNTIL_UNHAPPY 360
@@ -65,7 +69,7 @@ void setup()
 void loop()
 {
 #ifdef TEST_ANALOG_IN
-  int analog = getAverageAnalog();
+  int analog = getOversampledAnalo();
   static char outString[] = "        ";
   itoa(analog, outString, 10);
   oled.setCursor(0, 0);
@@ -175,28 +179,41 @@ void tickSecond()
   }
 }
 
-int getAverageAnalog()
+/**
+ * Discussion:
+ * This 4-times oversampling, not a lowpass.
+ * Problem is the false zero values from hardware due to mains zero crossings.
+ * This way there must be four sequential zeroes in order to safely detect a power off.
+ * There may be spurious readings above zero even without any power, maybe through some
+ * influence, EM spikes etc.
+ * ANALOG_THRESHOLD should handle that safely:
+ * As single spike surrounded by zeroes has to be at least four times as high as ANALOG_THRESHOLD.
+ * If that's not enough just raise the number of ANALOG_OVERSAMPLING. This would trade reaction
+ * time for accuracy.
+ */
+int getOversampledAnalog()
 {
   static uint8_t numOfPreReads = 0;
-  static int values[4];
+  static int values[ANALOG_OVERSAMPLING];
   uint8_t pos;
   int analog;
 
   // shift up
-  for (pos = 3; pos > 0; pos--)
+  for (pos = ANALOG_OVERSAMPLING - 1; pos > 0; pos--)
   {
     values[pos] = values[pos - 1];
   }
 
   values[0] = analogRead(ANALOG_PIN);
-  if (numOfPreReads > 3)
+
+  if (numOfPreReads >= ANALOG_OVERSAMPLING)
   {
     analog = 0;
-    for (pos = 0; pos < 4; pos++)
+    for (pos = 0; pos < ANALOG_OVERSAMPLING; pos++)
     {
       analog += values[pos];
     }
-    return analog / 4;
+    return analog / ANALOG_OVERSAMPLING;
   }
 
   numOfPreReads++;
@@ -205,7 +222,7 @@ int getAverageAnalog()
 
 uint8_t determinePhase()
 {
-  if (getAverageAnalog() > ANALOG_THRESHOLD)
+  if (getOversampledAnalog() > ANALOG_THRESHOLD)
   {
     timerOffDetection = 0;
     timerFinishedDetection = 0;
@@ -239,10 +256,10 @@ uint8_t determinePhase()
 void updateDisplay()
 {
   static uint8_t pageBefore;
-  void(*pointedFunction)();
+  void (*funcPtr)();
 
   noInterrupts();
-  
+
   tickBlink();
 
   // displayIsDirty is set once per second in tickSecond().
@@ -257,7 +274,7 @@ void updateDisplay()
     oled.setContrast(0);
     oled.setCursor(63, 5);
     oled.startData();
-    oled.sendData((uint8_t) seconds);
+    oled.sendData((uint8_t)seconds);
     oled.endData();
     return;
   }
@@ -271,13 +288,13 @@ void updateDisplay()
 
   if (currentPage != pageBefore)
   {
-    pointedFunction = currentPage == PAGE_COST ? &beginCostPage : &beginTimePage;
-    pointedFunction();
+    funcPtr = currentPage == PAGE_COST ? beginCostPage : beginTimePage;
+    funcPtr();
   }
   pageBefore = currentPage;
 
-  pointedFunction = currentPage == PAGE_COST ? &updateCostPage : &updateTimePage;
-  pointedFunction();
+  funcPtr = currentPage == PAGE_COST ? updateCostPage : updateTimePage;
+  funcPtr();
 
   debugOnOff();
 
