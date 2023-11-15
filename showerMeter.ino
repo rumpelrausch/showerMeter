@@ -12,7 +12,7 @@
 #define SECONDS_UNTIL_UNHAPPY 360
 #define SECONDS_UNTIL_WARN 420
 
-#define GREET_MILLISECONDS 1000
+#define GREET_MILLISECONDS 5000
 #define SLOW_POLL_MILLISECONDS 2003 // use a prime to avoid continously tracking zero crossings
 #define FAST_POLL_MILLISECONDS 307
 
@@ -42,7 +42,6 @@ volatile uint16_t timerOffDetection;      // > 0: Timer is running
 volatile uint16_t timerFinishedDetection; // > 0: Timer is running
 volatile uint8_t blinkState;
 volatile bool displayIsDirty;
-volatile uint8_t updateCount = 0;
 
 void setup()
 {
@@ -53,9 +52,7 @@ void setup()
   oled.begin(64, 48, sizeof(tiny4koled_init_64x48), tiny4koled_init_64x48);
   oled.setRotation(1);
   oled.setFont(FONT8X16);
-  oled.clear();
   oled.on();
-  greet();
   oled.clear();
 
 #ifndef TEST_ANALOG_IN
@@ -114,6 +111,7 @@ void greet()
 #ifndef TEST_ANALOG_IN
   delay(GREET_MILLISECONDS);
 #endif
+  oled.clear();
 }
 
 #ifndef TEST_ANALOG_IN
@@ -183,15 +181,17 @@ int getAverageAnalog()
   int analog;
 
   // shift up
-  for(pos = 3; pos > 0; pos--)
+  for (pos = 3; pos > 0; pos--)
   {
-    values[pos] = values[pos-1];
+    values[pos] = values[pos - 1];
   }
 
   values[0] = analogRead(ANALOG_PIN);
-  if(numOfPreReads > 3) {
+  if (numOfPreReads > 3)
+  {
     analog = 0;
-    for(pos = 0; pos < 4; pos++){
+    for (pos = 0; pos < 4; pos++)
+    {
       analog += values[pos];
     }
     return analog / 4;
@@ -239,19 +239,29 @@ void updateDisplay()
   static uint8_t pageBefore;
 
   // displayIsDirty is set once per second in tickSecond().
-  if (!displayIsDirty || state == STATE_IDLE)
+  if (!displayIsDirty)
   {
     return;
   }
   displayIsDirty = false;
-  updateCount++;
+
+  if(state == STATE_IDLE)
+  {
+    oled.setCursor(0,0);
+    oled.startData();
+    oled.sendData(seconds & 0xFF);
+    oled.endData();
+    return;
+  }
 
   if (state == STATE_TO_IDLE)
   {
-    oled.clear();
-    oled.setCursor(0, 0);
-    oled.print(F("."));
-    oled.setContrast(0);
+    greet();
+
+    // oled.clear();
+    // oled.setCursor(0, 0);
+    // oled.print(F("."));
+    // oled.setContrast(0);
     state = STATE_IDLE;
     return;
   }
@@ -304,14 +314,6 @@ void debugSecondsOn()
   oled.setCursor(48, 4);
   char s[] = "    ";
   itoa(secondsOn, s, 10);
-  oled.print(s);
-}
-
-void debugUpdateCount()
-{
-  oled.setCursor(48, 4);
-  char s[] = "    ";
-  itoa(updateCount, s, 10);
   oled.print(s);
 }
 
