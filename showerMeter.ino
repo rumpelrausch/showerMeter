@@ -6,7 +6,7 @@
 
 #define OFF_AFTER_SECONDS 3
 #define FINISHED_AFTER_OFF_SECONDS 60
-#define ANALOG_THRESHOLD 65
+#define ANALOG_THRESHOLD 20
 
 #define PAGE_SWITCH_EVERY_SECONDS 4
 #define SECONDS_UNTIL_UNHAPPY 360
@@ -356,36 +356,38 @@ void setNextPage()
 
 void updateCostPage()
 {
+  uint16_t totalCents = centiCents / 100;
   oled.setCursor(12, 0);
-  oled.print(getEuroString(centiCents / 100));
+  oled.print(getEuroString(totalCents));
   oled.print(F(","));
-  oled.print(getCentString(centiCents / 100));
+  oled.print(getCentString(totalCents));
   oled.clearToEOL();
 
   oled.setCursor(12, 4);
-  oled.print(getEuroString((centiCents / 100) * DAYS_PER_YEAR));
+  oled.print(getEuroString(totalCents * DAYS_PER_YEAR));
   oled.clearToEOL();
 }
 
-char *getEuroString(uint16_t cents)
+char *getEuroString(uint16_t totalCents)
 {
   static char euroString[] = "...";
-  itoa(cents / 100, euroString, 10);
+  itoa(totalCents / 100, euroString, 10);
   return euroString;
 }
 
-char *getCentString(uint16_t cents)
+char *getCentString(uint16_t totalCents)
 {
+  uint8_t realCents = totalCents % 100;
   static char centString[] = "   ";
 
-  if (cents < 10)
+  if (realCents < 10)
   {
-    itoa(cents, &(centString[1]), 10);
+    itoa(realCents, &(centString[1]), 10);
     centString[0] = '0';
   }
   else
   {
-    itoa(cents, centString, 10);
+    itoa(realCents, centString, 10);
   }
   return centString;
 }
@@ -403,7 +405,7 @@ void beginCostPage()
 void beginTimePage()
 {
   oled.clear();
-  // oled.setContrast(255);
+  oled.setContrast(255);
   oled.setCursor(0, 0);
 }
 
