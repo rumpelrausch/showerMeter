@@ -245,11 +245,12 @@ void updateDisplay()
   }
   displayIsDirty = false;
 
-  if(state == STATE_IDLE)
+  if (state == STATE_IDLE)
   {
-    oled.setCursor(0,0);
+    oled.setContrast(0);
+    oled.setCursor(63, 5);
     oled.startData();
-    oled.sendData(seconds & 0xFF);
+    oled.sendData((uint8_t) seconds);
     oled.endData();
     return;
   }
@@ -265,8 +266,6 @@ void updateDisplay()
     state = STATE_IDLE;
     return;
   }
-
-  noInterrupts();
 
   if (currentPage != pageBefore)
   {
@@ -290,7 +289,6 @@ void updateDisplay()
     updateTimePage();
   }
   debugOnOff();
-  interrupts();
 }
 
 void debugOnOff()
@@ -346,14 +344,7 @@ void blinkOn()
 
 void setNextPage()
 {
-  switch (currentPage)
-  {
-  case PAGE_COST:
-    currentPage = PAGE_TIME;
-    break;
-  case PAGE_TIME:
-    currentPage = PAGE_COST;
-  }
+  currentPage = currentPage == PAGE_COST ? PAGE_TIME : PAGE_COST;
 }
 
 void updateCostPage()
@@ -406,8 +397,8 @@ void beginCostPage()
 
 void beginTimePage()
 {
-  oled.clear();
   oled.setContrast(255);
+  oled.clear();
   oled.setCursor(0, 0);
 }
 
