@@ -314,6 +314,7 @@ void tickBlink()
   {
     return;
   }
+  shallBlink = false;
   oled.setContrast(blinkState ? 255 : 0);
   blinkState = !blinkState;
 }
