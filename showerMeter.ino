@@ -38,15 +38,15 @@
 
 volatile uint8_t state = STATE_IDLE;
 uint8_t currentPage;
-volatile uint8_t timer1value;
 volatile uint16_t seconds = 0;
 volatile uint16_t secondsOn;
 volatile uint16_t centiCents;
 volatile uint16_t timerOffDetection;      // > 0: Timer is running
 volatile uint16_t timerFinishedDetection; // > 0: Timer is running
-volatile bool blinkState;
 volatile bool displayIsDirty;
+volatile bool blinkState;
 volatile bool shallBlink;
+volatile bool blinkEnabled;
 
 void setup()
 {
@@ -88,8 +88,10 @@ void loop()
   delay(FAST_POLL_MILLISECONDS);
 #else
   state = determinePhase();
+  stopTimer();
   updateDisplay();
   debugOnOff();
+  startTimer();
   delay(state == STATE_IDLE ? SLOW_POLL_MILLISECONDS : FAST_POLL_MILLISECONDS); // slow poll if off
 #endif
 }
@@ -97,7 +99,6 @@ void loop()
 void reset()
 {
   currentPage = PAGE_COST;
-  timer1value = 0;
   secondsOn = 0;
   centiCents = 0;
   timerOffDetection = 0;      // > 0: Timer is running
@@ -105,6 +106,7 @@ void reset()
   displayIsDirty = true;
   blinkState = false;
   shallBlink = false;
+  blinkEnabled = false;
 }
 
 void greet()
@@ -130,22 +132,30 @@ void initTimer()
   OCR1A = 244;
   TCCR1 = 0x8D;
   TCCR1 |= (1 << CTC1);
+  startTimer();
+}
+
+void startTimer()
+{
   TIMSK |= (1 << OCIE1A);
 }
+
+void stopTimer()
+{
+  TIMSK &= ~(1 << OCIE1A);
+}
+
 #endif
 
 #ifndef TEST_ANALOG_IN
 ISR(TIMER1_COMPA_vect)
 {
+  static uint8_t interruptCounter = 0;
   noInterrupts();
-  timer1value++;
-  if (timer1value % 4 == 0)
+  interruptCounter++;
+  if (interruptCounter >= 16)
   {
-    shallBlink = true;
-  }
-  if (timer1value >= 16)
-  {
-    timer1value = 0;
+    interruptCounter = 0;
     tickSecond();
   }
   interrupts();
@@ -156,6 +166,7 @@ void tickSecond()
 {
   seconds++;
   displayIsDirty = true;
+  shallBlink = true;
 
   if (seconds % PAGE_SWITCH_EVERY_SECONDS == 0)
   {
@@ -256,9 +267,6 @@ uint8_t determinePhase()
 void updateDisplay()
 {
   static uint8_t pageBefore;
-  void (*funcPtr)();
-
-  noInterrupts();
 
   tickBlink();
 
@@ -288,17 +296,27 @@ void updateDisplay()
 
   if (currentPage != pageBefore)
   {
-    funcPtr = currentPage == PAGE_COST ? beginCostPage : beginTimePage;
-    funcPtr();
+    if (currentPage == PAGE_COST)
+    {
+      beginCostPage();
+    }
+    else
+    {
+      beginTimePage();
+    }
   }
   pageBefore = currentPage;
 
-  funcPtr = currentPage == PAGE_COST ? updateCostPage : updateTimePage;
-  funcPtr();
+  if (currentPage == PAGE_COST)
+  {
+    updateCostPage();
+  }
+  else
+  {
+    updateTimePage();
+  }
 
   debugOnOff();
-
-  interrupts();
 }
 
 void debugOnOff()
@@ -327,7 +345,7 @@ void debugSecondsOn()
 
 void tickBlink()
 {
-  if (!blinkState || !shallBlink)
+  if (!blinkEnabled || !shallBlink)
   {
     return;
   }
@@ -338,10 +356,7 @@ void tickBlink()
 
 void blinkOn()
 {
-  if (blinkState == 0)
-  {
-    blinkState = 1;
-  }
+  blinkEnabled = true;
 }
 
 void setNextPage()
