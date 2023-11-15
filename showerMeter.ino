@@ -40,8 +40,9 @@ volatile uint16_t secondsOn;
 volatile uint16_t centiCents;
 volatile uint16_t timerOffDetection;      // > 0: Timer is running
 volatile uint16_t timerFinishedDetection; // > 0: Timer is running
-volatile uint8_t blinkState;
+volatile bool blinkState;
 volatile bool displayIsDirty;
+volatile bool shallBlink;
 
 void setup()
 {
@@ -97,8 +98,9 @@ void reset()
   centiCents = 0;
   timerOffDetection = 0;      // > 0: Timer is running
   timerFinishedDetection = 0; // > 0: Timer is running
-  blinkState = 0;
   displayIsDirty = true;
+  blinkState = false;
+  shallBlink = false;
 }
 
 void greet()
@@ -135,7 +137,7 @@ ISR(TIMER1_COMPA_vect)
   timer1value++;
   if (timer1value % 4 == 0)
   {
-    tickBlink();
+    shallBlink = true;
   }
   if (timer1value >= 16)
   {
@@ -237,6 +239,11 @@ uint8_t determinePhase()
 void updateDisplay()
 {
   static uint8_t pageBefore;
+  void(*pointedFunction)();
+
+  noInterrupts();
+  
+  tickBlink();
 
   // displayIsDirty is set once per second in tickSecond().
   if (!displayIsDirty)
@@ -258,37 +265,23 @@ void updateDisplay()
   if (state == STATE_TO_IDLE)
   {
     greet();
-
-    // oled.clear();
-    // oled.setCursor(0, 0);
-    // oled.print(F("."));
-    // oled.setContrast(0);
     state = STATE_IDLE;
     return;
   }
 
   if (currentPage != pageBefore)
   {
-    switch (currentPage)
-    {
-    case PAGE_COST:
-      beginCostPage();
-      break;
-    case PAGE_TIME:
-      beginTimePage();
-    }
+    pointedFunction = currentPage == PAGE_COST ? &beginCostPage : &beginTimePage;
+    pointedFunction();
   }
   pageBefore = currentPage;
 
-  switch (currentPage)
-  {
-  case PAGE_COST:
-    updateCostPage();
-    break;
-  case PAGE_TIME:
-    updateTimePage();
-  }
+  pointedFunction = currentPage == PAGE_COST ? &updateCostPage : &updateTimePage;
+  pointedFunction();
+
   debugOnOff();
+
+  interrupts();
 }
 
 void debugOnOff()
@@ -317,21 +310,12 @@ void debugSecondsOn()
 
 void tickBlink()
 {
-  if (blinkState < 1)
+  if (!blinkState || !shallBlink)
   {
     return;
   }
-  if (blinkState == 1)
-  {
-    oled.setContrast(0);
-    blinkState++;
-    return;
-  }
-  if (blinkState == 2)
-  {
-    oled.setContrast(255);
-    blinkState = 1;
-  }
+  oled.setContrast(blinkState ? 255 : 0);
+  blinkState = !blinkState;
 }
 
 void blinkOn()
