@@ -3,6 +3,10 @@
 
 @import "{{ site.theme }}";
 
-* html {
+* body {
     font-size: 16px;
+}
+
+.blogimage--1 {
+    max-height: 300px;
 }
